@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Top-up Agent</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="banner" role="note">Sandbox demo: PayPal sandbox only. No real money moves.</div>
+  <main class="wrap">
+    <header>
+      <h1>Top-up Agent</h1>
+      <p class="sub">Say how much you want to add. You'll see the exact cost and approve it before anything is paid.</p>
+      <p class="mode" id="mode"></p>
+    </header>
+
+    <section id="ask" class="card">
+      <form id="ask-form">
+        <label for="message">What do you want to add?</label>
+        <textarea id="message" name="message" rows="2" maxlength="500" placeholder="Top up $25 for my trip budget" required></textarea>
+        <div class="examples" aria-label="Examples">
+          <button type="button" class="chip">Top up $25 for my trip budget</button>
+          <button type="button" class="chip">Add forty bucks to groceries</button>
+          <button type="button" class="chip">Put $12.50 toward the gym</button>
+        </div>
+        <button type="submit" id="ask-btn" class="primary">Draft my top-up</button>
+      </form>
+      <p id="reply" class="reply" aria-live="polite"></p>
+    </section>
+
+    <section id="quote" class="card hidden" aria-live="polite">
+      <h2 id="quote-title">Review your top-up</h2>
+      <p id="quote-note" class="note"></p>
+      <table class="lines" id="lines"></table>
+      <p id="quote-error" class="error hidden"></p>
+      <div class="actions" id="actions"></div>
+    </section>
+  </main>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
