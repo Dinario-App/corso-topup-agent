@@ -92,4 +92,4 @@ Acceptable for a sandbox demo, but they would need fixing before real use:
 ## Notes
 
 - Secrets live only in `.env`, which is git-ignored. `.env.example` holds placeholders.
-- No license yet: choosing one, and making the repo public, is decided at submission time.
+- License: MIT (see `LICENSE`). The repo goes public at submission time.

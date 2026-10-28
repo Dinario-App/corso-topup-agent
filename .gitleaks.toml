@@ -1,0 +1,22 @@
+# gitleaks configuration for corso-topup-agent.
+#
+# The offline test double in test/helpers.js returns one fixed, made-up PayPal
+# order id (20 upper-case alphanumerics), which the tests reuse as the return
+# token. A PayPal order id is a public identifier, not a credential, and this
+# one never existed. gitleaks' generic-api-key rule flags it on entropy alone.
+#
+# The allowlist is scoped to that rule, requires BOTH the test path AND the
+# fixture shape (condition = "AND"), and matches on the full match text rather
+# than the extracted secret, so an unrelated secret in a test file still fires.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "Fixed fake PayPal order id used by the offline test gateway"
+  condition = "AND"
+  regexTarget = "match"
+  paths = ['''^test/.*\.js$''']
+  regexes = ['''(?:token=|orderId: ')[A-Z0-9]{20}''']
