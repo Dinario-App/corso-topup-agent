@@ -1,0 +1,12 @@
+# gitleaks configuration for corso-topup-agent.
+# The test double in test/helpers.js uses one fixed, made-up PayPal order id
+# (20 upper-case alphanumerics) as the fake order id and return token. A PayPal
+# order id is a public identifier, not a credential, and this one never
+# existed. gitleaks' generic-api-key rule flags it on entropy alone.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fixed fake PayPal order id used by the offline test gateway"
+paths = ['''^test/.*\.js$''']
+regexes = ['''token=[A-Z0-9]{20}''']

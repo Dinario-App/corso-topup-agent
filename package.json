@@ -4,7 +4,7 @@
   "private": true,
   "description": "AI top-up agent: plain-words top-ups turned into PayPal sandbox checkouts that a person approves. PayPal AI Hackathon entry.",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "engines": {
     "node": ">=20.6"
   },
