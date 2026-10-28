@@ -8,8 +8,9 @@ export const testConfig = (env = {}) => loadConfig({ PUBLIC_BASE_URL: 'http://te
 // Options default to the happy path; override one to simulate a PayPal answer.
 // `captureError` makes captureOrder throw; `afterError` is the capture that a
 // follow-up getOrder then reports (null: PayPal shows no capture), and
-// `reconcileError` makes that follow-up getOrder throw too. `getOrderDelayMs`
-// is one delay, or a list with one delay per getOrder call in order.
+// `reconcileError` makes that follow-up getOrder throw too. `beforeGetOrder(n)`
+// is awaited at the start of the n-th getOrder call (0-based), so a test can
+// hold a lookup open with a deferred() and control the interleaving exactly.
 export function fakePayPal({
   approvedValue,
   approvedCurrency = 'USD',
@@ -21,7 +22,7 @@ export function fakePayPal({
   afterError = null,
   reconcileError = null,
   captureDelayMs = 0,
-  getOrderDelayMs = 0,
+  beforeGetOrder = null,
 } = {}) {
   const calls = [];
   let created = null;
@@ -37,9 +38,8 @@ export function fakePayPal({
     },
     async getOrder(id) {
       calls.push(['getOrder', id]);
-      const delay = Array.isArray(getOrderDelayMs) ? (getOrderDelayMs[getOrderCount] ?? 0) : getOrderDelayMs;
-      getOrderCount += 1;
-      if (delay) await new Promise((r) => setTimeout(r, delay));
+      const n = getOrderCount++;
+      if (beforeGetOrder) await beforeGetOrder(n);
       if (captureFailed && reconcileError) throw reconcileError;
       return {
         orderId: id,
@@ -60,6 +60,13 @@ export function fakePayPal({
       return { status: 'COMPLETED', captureId: 'CAP123', captureStatus, currency: captureCurrency, value: captureValue ?? created.value };
     },
   };
+}
+
+// A promise plus its resolve/reject, for holding a fake call open.
+export function deferred() {
+  let resolve, reject;
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
 }
 
 export const fixedAgent = (intent) => ({ kind: 'fake', model: null, async interpret() { return intent; } });

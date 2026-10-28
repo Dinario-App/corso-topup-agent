@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fakePayPal, fixedAgent, startApp } from './helpers.js';
+import { deferred, fakePayPal, fixedAgent, startApp } from './helpers.js';
 
 const TOPUP = { action: 'topup', amount_usd: 25, purpose: 'Trip budget', reply: "Here's your top-up." };
 
@@ -314,40 +314,92 @@ test('if capture and the reconciliation lookup both fail, the payment needs revi
   assertOneCaptureOneLookup(paypal);
 });
 
-test('a late second PayPal return cannot reopen a paid quote', async (t) => {
-  // The second return's PayPal lookup answers APPROVED only after Pay finished.
-  const paypal = fakePayPal({ getOrderDelayMs: [10, 150] });
-  const app = await startApp({ agent: fixedAgent(TOPUP), paypal });
-  t.after(app.close);
+// Holds the first approval lookup open until the test releases it.
+function gatedFirstLookup() {
+  const entered = deferred();
+  const release = deferred();
+  const beforeGetOrder = (n) => {
+    if (n !== 0) return undefined;
+    entered.resolve();
+    return release.promise;
+  };
+  return { entered, release, beforeGetOrder };
+}
+
+async function startCheckout(app) {
   const { body } = await app.post('/api/quote', { message: 'x' });
   const id = body.quote.id;
   await app.post(`/api/quotes/${id}/checkout`, { confirm: true, total: '$25.00' });
-  const ret = `/paypal/return?quote=${id}&token=ORDER1234567890ABCDE`;
+  return { id, ret: `/paypal/return?quote=${id}&token=ORDER1234567890ABCDE` };
+}
+
+const lookups = (paypal) => paypal.calls.filter(([name]) => name === 'getOrder').length;
+
+test('a second or late PayPal return cannot reopen a quote', { timeout: 10000 }, async (t) => {
+  const gate = gatedFirstLookup();
+  const paypal = fakePayPal({ beforeGetOrder: gate.beforeGetOrder });
+  const app = await startApp({ agent: fixedAgent(TOPUP), paypal });
+  // Release the held lookup first, so a failed assertion can't leave the
+  // request (and the server) hanging.
+  t.after(async () => {
+    gate.release.resolve();
+    await app.close();
+  });
+  const { id, ret } = await startCheckout(app);
+
+  // The first return owns the lookup; it is held open here.
   const first = app.get(ret);
-  const second = app.get(ret);
+  await gate.entered.promise;
+  assert.equal((await app.get(`/api/quotes/${id}`)).body.quote.status, 'checking_approval');
+
+  // A second return during the lookup redirects without asking PayPal again.
+  const second = await app.get(ret);
+  assert.equal(second.status, 303);
+  assert.equal(lookups(paypal), 1);
+
+  gate.release.resolve();
   await first;
+  assert.equal((await app.get(`/api/quotes/${id}`)).body.quote.status, 'payer_approved');
   assert.equal((await app.post(`/api/quotes/${id}/pay`, { confirm: true })).status, 200);
+
+  // A late return after payment changes nothing.
+  assert.equal((await app.get(ret)).status, 303);
   assert.equal((await app.get(`/api/quotes/${id}`)).body.quote.status, 'completed');
-  await second;
-  const q = (await app.get(`/api/quotes/${id}`)).body.quote;
-  assert.equal(q.status, 'completed');
+  assert.equal(lookups(paypal), 1);
   assert.equal((await app.post(`/api/quotes/${id}/pay`, { confirm: true })).status, 409);
   assert.equal(paypal.calls.filter(([name]) => name === 'captureOrder').length, 1);
 });
 
-test('a cancel while the return is being checked wins', async (t) => {
-  const paypal = fakePayPal({ getOrderDelayMs: 50 });
-  const app = await startApp({ agent: fixedAgent(TOPUP), paypal });
-  t.after(app.close);
-  const { body } = await app.post('/api/quote', { message: 'x' });
-  const id = body.quote.id;
-  await app.post(`/api/quotes/${id}/checkout`, { confirm: true, total: '$25.00' });
-  const ret = app.get(`/paypal/return?quote=${id}&token=ORDER1234567890ABCDE`);
-  await new Promise((r) => setTimeout(r, 10));
-  await app.post(`/api/quotes/${id}/cancel`, {});
-  await ret;
-  assert.equal((await app.get(`/api/quotes/${id}`)).body.quote.status, 'cancelled');
-  assert.equal((await app.post(`/api/quotes/${id}/pay`, { confirm: true })).status, 409);
+test('a cancel during the approval lookup wins, whether the lookup succeeds or fails', { timeout: 10000 }, async () => {
+  const cancels = [
+    ['GET /paypal/cancel', (app, id) => app.get(`/paypal/cancel?quote=${id}`)],
+    ['POST cancel', (app, id) => app.post(`/api/quotes/${id}/cancel`, {})],
+  ];
+  for (const [label, cancel] of cancels) {
+    for (const outcome of ['approved', 'error']) {
+      const gate = gatedFirstLookup();
+      const paypal = fakePayPal({ beforeGetOrder: gate.beforeGetOrder });
+      const app = await startApp({ agent: fixedAgent(TOPUP), paypal });
+      let status, pay;
+      try {
+        const { id, ret } = await startCheckout(app);
+        const pending = app.get(ret);
+        await gate.entered.promise;
+        await cancel(app, id);
+        if (outcome === 'approved') gate.release.resolve();
+        else gate.release.reject(new Error('PayPal down'));
+        await pending;
+        status = (await app.get(`/api/quotes/${id}`)).body.quote.status;
+        pay = (await app.post(`/api/quotes/${id}/pay`, { confirm: true })).status;
+      } finally {
+        gate.release.resolve();
+        await app.close();
+      }
+      assert.equal(status, 'cancelled', `${label}, lookup ${outcome}`);
+      assert.equal(pay, 409, `${label}, lookup ${outcome}`);
+      assert.equal(paypal.calls.filter(([name]) => name === 'captureOrder').length, 0);
+    }
+  }
 });
 
 test('if the approval check itself errors, the quote goes back to waiting for PayPal', async (t) => {
