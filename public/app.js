@@ -36,6 +36,7 @@ const TITLES = {
   drafted: 'Review your top-up',
   creating_order: 'Opening PayPal…',
   awaiting_payer: 'Finish in PayPal',
+  checking_approval: 'Checking with PayPal…',
   payer_approved: 'Last step: confirm payment',
   capturing: 'Paying…',
   completed: 'Top-up complete',

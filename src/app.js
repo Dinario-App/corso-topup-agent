@@ -7,12 +7,13 @@ import { buildQuote, presentQuote, QuoteStore } from './quote.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../public', import.meta.url));
 const MAX_MESSAGE_LENGTH = 500;
+const CANCELLABLE = ['drafted', 'awaiting_payer', 'checking_approval', 'payer_approved'];
 
 // Quote lifecycle. Money moves only on the last arrow, and only after two
 // explicit approvals by the person: once in PayPal, once with "Pay now" here.
 //
 //   drafted --(person: Continue to PayPal)--> awaiting_payer
-//   awaiting_payer --(person approves in PayPal, amount re-checked)--> payer_approved
+//   awaiting_payer --(person approves in PayPal)--> checking_approval --(amount re-checked)--> payer_approved
 //   payer_approved --(person: Pay now)--> capturing --> completed
 //   any open state --(cancel / mismatch / error before capture)--> cancelled | failed
 //   capturing --(capture pending, amount off, or no answer from PayPal)--> needs_review
@@ -25,7 +26,7 @@ function settleCapture(quote, capture) {
   if (capture.captureStatus === 'COMPLETED' && matches) {
     quote.status = 'completed';
     quote.error = null;
-  } else if (capture.captureStatus === 'DECLINED' || capture.captureStatus === 'FAILED') {
+  } else if (capture.captureStatus === 'DECLINED') {
     quote.status = 'failed';
     quote.error = 'PayPal declined the payment. Nothing was paid.';
   } else if (capture.captureStatus === 'COMPLETED') {
@@ -136,7 +137,18 @@ export function createApp({ config, agent, paypal, store = new QuoteStore(), now
         quote.error = 'PayPal returned a different order than the one we created. Nothing was paid.';
         return res.redirect(303, back);
       }
-      const order = await paypal.getOrder(quote.orderId);
+      // Claim the quote before awaiting PayPal, so a second (e.g. double-clicked
+      // or late) return can't apply a stale APPROVED answer to a quote that has
+      // since been paid or cancelled.
+      quote.status = 'checking_approval';
+      let order;
+      try {
+        order = await paypal.getOrder(quote.orderId);
+      } catch (err) {
+        if (quote.status === 'checking_approval') quote.status = 'awaiting_payer';
+        throw err;
+      }
+      if (quote.status !== 'checking_approval') return res.redirect(303, back);
       if (order.status !== 'APPROVED') {
         quote.status = 'failed';
         quote.error = `PayPal says the order is ${order.status}, not approved. Nothing was paid.`;
@@ -155,7 +167,7 @@ export function createApp({ config, agent, paypal, store = new QuoteStore(), now
   app.get('/paypal/cancel', (req, res) => {
     const quote = loadQuote(req, res);
     if (!quote) return;
-    if (['drafted', 'awaiting_payer', 'payer_approved'].includes(quote.status)) {
+    if (CANCELLABLE.includes(quote.status)) {
       quote.status = 'cancelled';
       quote.error = null;
     }
@@ -165,7 +177,7 @@ export function createApp({ config, agent, paypal, store = new QuoteStore(), now
   app.post('/api/quotes/:id/cancel', (req, res) => {
     const quote = loadQuote(req, res);
     if (!quote) return;
-    if (['drafted', 'awaiting_payer', 'payer_approved'].includes(quote.status)) quote.status = 'cancelled';
+    if (CANCELLABLE.includes(quote.status)) quote.status = 'cancelled';
     res.json({ quote: presentQuote(quote) });
   });
 

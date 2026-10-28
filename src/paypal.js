@@ -12,8 +12,9 @@ export class PayPalError extends Error {
   }
 }
 
-export function createToolkitTools({ clientId, clientSecret }) {
-  const toolkit = new PayPalAgentToolkit({
+// `Toolkit` is injectable only so tests can prove the sandbox guard below.
+export function createToolkitTools({ clientId, clientSecret }, Toolkit = PayPalAgentToolkit) {
+  const toolkit = new Toolkit({
     clientId,
     clientSecret,
     configuration: {

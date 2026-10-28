@@ -77,3 +77,26 @@ test('toolkit errors become PayPalError', async () => {
   const { quote } = buildQuote({ action: 'topup', amount_usd: 10, purpose: null, reply: '' }, testConfig(), 0);
   await assert.rejects(createPayPalGateway(tools).createOrder(quote, {}), PayPalError);
 });
+
+test('getOrder reads a captured order through the real gateway', async () => {
+  const { tools } = fakeTools({
+    get_order: {
+      id: 'O',
+      status: 'COMPLETED',
+      purchase_units: [{
+        amount: { currency_code: 'USD', value: '25.00' },
+        payments: { captures: [{ id: 'CAP', status: 'COMPLETED', amount: { currency_code: 'USD', value: '25.00' } }] },
+      }],
+    },
+  });
+  const order = await createPayPalGateway(tools).getOrder('O');
+  assert.deepEqual(order.capture, { captureId: 'CAP', captureStatus: 'COMPLETED', currency: 'USD', value: '25.00' });
+});
+
+test('refuses a toolkit that points at live PayPal', () => {
+  class LiveToolkit {
+    client = { getBaseUrl: () => 'https://api-m.paypal.com' };
+    getTools() { throw new Error('should not get this far'); }
+  }
+  assert.throws(() => createToolkitTools({ clientId: 'x', clientSecret: 'y' }, LiveToolkit), /not in sandbox mode/);
+});
