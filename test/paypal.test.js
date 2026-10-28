@@ -44,11 +44,32 @@ test('zero fee lines are not sent to PayPal', async () => {
 test('getOrder and captureOrder read the PayPal responses', async () => {
   const { tools } = fakeTools({
     get_order: { id: 'O', status: 'APPROVED', purchase_units: [{ amount: { currency_code: 'USD', value: '25.00' } }] },
-    pay_order: { status: 'success', response: { status: 'COMPLETED', purchase_units: [{ payments: { captures: [{ id: 'CAP', status: 'COMPLETED', amount: { value: '25.00' } }] } }] } },
+    pay_order: { status: 'success', response: { status: 'COMPLETED', purchase_units: [{ payments: { captures: [{ id: 'CAP', status: 'COMPLETED', amount: { currency_code: 'USD', value: '25.00' } }] } }] } },
   });
   const gw = createPayPalGateway(tools);
-  assert.deepEqual(await gw.getOrder('O'), { orderId: 'O', status: 'APPROVED', currency: 'USD', value: '25.00', payerEmail: null });
-  assert.deepEqual(await gw.captureOrder('O'), { status: 'COMPLETED', captureId: 'CAP', captureStatus: 'COMPLETED', value: '25.00' });
+  assert.deepEqual(await gw.getOrder('O'), {
+    orderId: 'O', status: 'APPROVED', currency: 'USD', value: '25.00', payerEmail: null,
+    capture: { captureId: null, captureStatus: null, currency: null, value: null },
+  });
+  assert.deepEqual(await gw.captureOrder('O'), { status: 'COMPLETED', captureId: 'CAP', captureStatus: 'COMPLETED', currency: 'USD', value: '25.00' });
+});
+
+test('captureOrder reports the captured amount, not the order amount', async () => {
+  const { tools } = fakeTools({
+    pay_order: {
+      status: 'success',
+      response: {
+        status: 'COMPLETED',
+        purchase_units: [{
+          amount: { currency_code: 'USD', value: '25.00' },
+          payments: { captures: [{ id: 'CAP', status: 'PENDING', amount: { currency_code: 'USD', value: '20.00' } }] },
+        }],
+      },
+    },
+  });
+  assert.deepEqual(await createPayPalGateway(tools).captureOrder('O'), {
+    status: 'COMPLETED', captureId: 'CAP', captureStatus: 'PENDING', currency: 'USD', value: '20.00',
+  });
 });
 
 test('toolkit errors become PayPalError', async () => {

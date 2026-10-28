@@ -140,3 +140,119 @@ test('serves the web page', async (t) => {
   assert.equal(page.status, 200);
   assert.match(page.body, /Sandbox demo/);
 });
+
+// Drives a fresh quote to payer_approved and returns its id.
+async function approvedQuote(app) {
+  const { body } = await app.post('/api/quote', { message: 'x' });
+  const id = body.quote.id;
+  await app.post(`/api/quotes/${id}/checkout`, { confirm: true, total: '$25.00' });
+  await app.get(`/paypal/return?quote=${id}&token=ORDER1234567890ABCDE`);
+  return id;
+}
+
+test('an order PayPal does not report as APPROVED cannot be paid', async (t) => {
+  const paypal = fakePayPal({ orderStatus: 'PAYER_ACTION_REQUIRED' });
+  const app = await startApp({ agent: fixedAgent(TOPUP), paypal });
+  t.after(app.close);
+  const id = await approvedQuote(app);
+  const q = (await app.get(`/api/quotes/${id}`)).body.quote;
+  assert.equal(q.status, 'failed');
+  assert.match(q.error, /not approved/);
+  assert.equal((await app.post(`/api/quotes/${id}/pay`, { confirm: true })).status, 409);
+});
+
+test('a non-USD approval blocks payment', async (t) => {
+  const paypal = fakePayPal({ approvedCurrency: 'EUR' });
+  const app = await startApp({ agent: fixedAgent(TOPUP), paypal });
+  t.after(app.close);
+  const id = await approvedQuote(app);
+  assert.equal((await app.get(`/api/quotes/${id}`)).body.quote.status, 'failed');
+  assert.equal((await app.post(`/api/quotes/${id}/pay`, { confirm: true })).status, 409);
+});
+
+test('a pending capture is not recorded as paid', async (t) => {
+  const paypal = fakePayPal({ captureStatus: 'PENDING' });
+  const app = await startApp({ agent: fixedAgent(TOPUP), paypal });
+  t.after(app.close);
+  const id = await approvedQuote(app);
+  const r = await app.post(`/api/quotes/${id}/pay`, { confirm: true });
+  assert.equal(r.status, 502);
+  assert.equal(r.body.quote.status, 'needs_review');
+  assert.match(r.body.quote.error, /PENDING/);
+  assert.doesNotMatch(r.body.quote.error, /Nothing was paid/);
+});
+
+test('a declined capture is failed and says nothing was paid', async (t) => {
+  const paypal = fakePayPal({ captureStatus: 'DECLINED' });
+  const app = await startApp({ agent: fixedAgent(TOPUP), paypal });
+  t.after(app.close);
+  const id = await approvedQuote(app);
+  const r = await app.post(`/api/quotes/${id}/pay`, { confirm: true });
+  assert.equal(r.body.quote.status, 'failed');
+  assert.match(r.body.quote.error, /declined.*Nothing was paid/);
+});
+
+test('a captured amount or currency that differs from the quote is flagged', async (t) => {
+  for (const opts of [{ captureValue: '2.50' }, { captureCurrency: 'EUR' }]) {
+    const app = await startApp({ agent: fixedAgent(TOPUP), paypal: fakePayPal(opts) });
+    const id = await approvedQuote(app);
+    const r = await app.post(`/api/quotes/${id}/pay`, { confirm: true });
+    await app.close();
+    assert.equal(r.status, 502, JSON.stringify(opts));
+    assert.equal(r.body.quote.status, 'needs_review');
+    assert.match(r.body.quote.error, /you approved \$25\.00/);
+  }
+});
+
+test('if capture errors but PayPal did capture, the payment is recorded', async (t) => {
+  const paypal = fakePayPal({
+    captureError: new Error('socket hang up'),
+    afterError: { captureId: 'CAPLATE', captureStatus: 'COMPLETED', currency: 'USD', value: '25.00' },
+  });
+  const app = await startApp({ agent: fixedAgent(TOPUP), paypal });
+  t.after(app.close);
+  const id = await approvedQuote(app);
+  const r = await app.post(`/api/quotes/${id}/pay`, { confirm: true });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.quote.status, 'completed');
+  assert.equal(r.body.quote.captureId, 'CAPLATE');
+});
+
+test('if capture errors and PayPal shows no capture, it asks for a check instead of claiming nothing was paid', async (t) => {
+  const paypal = fakePayPal({ captureError: new Error('timeout') });
+  const app = await startApp({ agent: fixedAgent(TOPUP), paypal });
+  t.after(app.close);
+  const id = await approvedQuote(app);
+  const r = await app.post(`/api/quotes/${id}/pay`, { confirm: true });
+  assert.equal(r.status, 502);
+  assert.equal(r.body.quote.status, 'needs_review');
+  assert.doesNotMatch(r.body.quote.error, /Nothing was paid/);
+  assert.equal((await app.post(`/api/quotes/${id}/pay`, { confirm: true })).status, 409, 'no blind retry');
+});
+
+test('two Pay presses at once capture only once', async (t) => {
+  const paypal = fakePayPal({ captureDelayMs: 50 });
+  const app = await startApp({ agent: fixedAgent(TOPUP), paypal });
+  t.after(app.close);
+  const id = await approvedQuote(app);
+  const results = await Promise.all([
+    app.post(`/api/quotes/${id}/pay`, { confirm: true }),
+    app.post(`/api/quotes/${id}/pay`, { confirm: true }),
+  ]);
+  assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(paypal.calls.filter(([name]) => name === 'captureOrder').length, 1);
+});
+
+test('finished or cancelled quotes cannot start a second checkout', async (t) => {
+  const paypal = fakePayPal();
+  const app = await startApp({ agent: fixedAgent(TOPUP), paypal });
+  t.after(app.close);
+  const paidId = await approvedQuote(app);
+  await app.post(`/api/quotes/${paidId}/pay`, { confirm: true });
+  assert.equal((await app.post(`/api/quotes/${paidId}/checkout`, { confirm: true, total: '$25.00' })).status, 409);
+
+  const { body } = await app.post('/api/quote', { message: 'x' });
+  await app.post(`/api/quotes/${body.quote.id}/cancel`, {});
+  assert.equal((await app.post(`/api/quotes/${body.quote.id}/checkout`, { confirm: true, total: '$25.00' })).status, 409);
+  assert.equal(paypal.calls.filter(([name]) => name === 'createOrder').length, 1);
+});

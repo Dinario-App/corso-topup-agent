@@ -41,6 +41,7 @@ const TITLES = {
   completed: 'Top-up complete',
   cancelled: 'Top-up cancelled',
   failed: 'Top-up not completed',
+  needs_review: 'Check this payment',
 };
 
 const NOTES = {
@@ -49,7 +50,8 @@ const NOTES = {
   payer_approved: 'You approved this in PayPal and we checked the amount with PayPal. Press Pay to finish. Nothing is paid until you do.',
   completed: 'Paid in the PayPal sandbox. No real money moved.',
   cancelled: 'Nothing was paid.',
-  failed: 'Nothing was paid.',
+  failed: 'The top-up did not go through. Details below.',
+  needs_review: 'PayPal may have taken this payment. Check the PayPal sandbox before trying again.',
 };
 
 function renderQuote(quote) {
@@ -111,7 +113,7 @@ function renderQuote(quote) {
     receipt.append(el('code', {}, quote.captureId || 'n/a'));
     actions.append(receipt);
     actions.append(startOver());
-  } else if (quote.status === 'cancelled' || quote.status === 'failed') {
+  } else if (['cancelled', 'failed', 'needs_review'].includes(quote.status)) {
     actions.append(startOver());
   }
 }

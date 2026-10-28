@@ -14,7 +14,28 @@ const MAX_MESSAGE_LENGTH = 500;
 //   drafted --(person: Continue to PayPal)--> awaiting_payer
 //   awaiting_payer --(person approves in PayPal, amount re-checked)--> payer_approved
 //   payer_approved --(person: Pay now)--> capturing --> completed
-//   any open state --(cancel / mismatch / error)--> cancelled | failed
+//   any open state --(cancel / mismatch / error before capture)--> cancelled | failed
+//   capturing --(capture pending, amount off, or no answer from PayPal)--> needs_review
+
+// Records what PayPal says about the capture itself. Only a COMPLETED capture
+// of exactly the quoted USD total counts as paid.
+function settleCapture(quote, capture) {
+  quote.captureId = capture.captureId ?? null;
+  const matches = capture.currency === 'USD' && dollarsToCents(capture.value) === quote.totalCents;
+  if (capture.captureStatus === 'COMPLETED' && matches) {
+    quote.status = 'completed';
+    quote.error = null;
+  } else if (capture.captureStatus === 'DECLINED' || capture.captureStatus === 'FAILED') {
+    quote.status = 'failed';
+    quote.error = 'PayPal declined the payment. Nothing was paid.';
+  } else if (capture.captureStatus === 'COMPLETED') {
+    quote.status = 'needs_review';
+    quote.error = `PayPal took ${capture.currency} ${capture.value}, but you approved ${formatUSD(quote.totalCents)}. Check the PayPal sandbox.`;
+  } else {
+    quote.status = 'needs_review';
+    quote.error = `PayPal is holding this payment (${capture.captureStatus ?? 'unknown status'}). Check the PayPal sandbox before trying again.`;
+  }
+}
 
 export function createApp({ config, agent, paypal, store = new QuoteStore(), now = () => Date.now() }) {
   const app = express();
@@ -77,7 +98,7 @@ export function createApp({ config, agent, paypal, store = new QuoteStore(), now
       if (quote.status !== 'drafted') return res.status(409).json({ error: `This top-up is already ${quote.status}.` });
       if (now() > quote.expiresAt) {
         quote.status = 'cancelled';
-        quote.error = 'Expired before checkout.';
+        quote.error = 'Expired before checkout. Nothing was paid.';
         return res.status(410).json({ error: 'This quote expired. Please ask again.' });
       }
       if (!paypal) return res.status(503).json({ error: 'PayPal sandbox credentials are not set up on this server.' });
@@ -96,7 +117,7 @@ export function createApp({ config, agent, paypal, store = new QuoteStore(), now
     } catch (err) {
       if (quote.status === 'creating_order') {
         quote.status = 'failed';
-        quote.error = 'Could not start the PayPal checkout.';
+        quote.error = 'Could not start the PayPal checkout. Nothing was paid.';
       }
       next(err);
     }
@@ -112,13 +133,13 @@ export function createApp({ config, agent, paypal, store = new QuoteStore(), now
       if (quote.status !== 'awaiting_payer') return res.redirect(303, back);
       if (!quote.orderId || req.query.token !== quote.orderId) {
         quote.status = 'failed';
-        quote.error = 'PayPal returned a different order than the one we created.';
+        quote.error = 'PayPal returned a different order than the one we created. Nothing was paid.';
         return res.redirect(303, back);
       }
       const order = await paypal.getOrder(quote.orderId);
       if (order.status !== 'APPROVED') {
         quote.status = 'failed';
-        quote.error = `PayPal says the order is ${order.status}, not approved.`;
+        quote.error = `PayPal says the order is ${order.status}, not approved. Nothing was paid.`;
       } else if (order.currency !== 'USD' || dollarsToCents(order.value) !== quote.totalCents) {
         quote.status = 'failed';
         quote.error = `PayPal shows ${order.currency} ${order.value}, but you approved ${formatUSD(quote.totalCents)}. Nothing was charged.`;
@@ -158,20 +179,28 @@ export function createApp({ config, agent, paypal, store = new QuoteStore(), now
         return res.status(409).json({ error: `This top-up is ${quote.status}, so it can't be paid now.` });
       }
       quote.status = 'capturing';
-      const capture = await paypal.captureOrder(quote.orderId);
-      if (capture.status !== 'COMPLETED' || dollarsToCents(capture.value) !== quote.totalCents) {
-        quote.status = 'failed';
-        quote.error = `PayPal capture came back ${capture.status ?? 'unknown'}. Check the sandbox dashboard.`;
-        return res.status(502).json({ error: quote.error, quote: presentQuote(quote) });
+      let capture;
+      try {
+        capture = await paypal.captureOrder(quote.orderId);
+      } catch (err) {
+        // The capture may have gone through even though we got no answer:
+        // ask PayPal before telling the person anything.
+        console.error(err.message);
+        try {
+          capture = (await paypal.getOrder(quote.orderId)).capture;
+        } catch (reconcileErr) {
+          console.error(reconcileErr.message);
+        }
+        if (!capture?.captureStatus) {
+          quote.status = 'needs_review';
+          quote.error = "We couldn't confirm this payment with PayPal. Check the PayPal sandbox before trying again.";
+          return res.status(502).json({ error: quote.error, quote: presentQuote(quote) });
+        }
       }
-      quote.captureId = capture.captureId;
-      quote.status = 'completed';
+      settleCapture(quote, capture);
+      if (quote.status !== 'completed') return res.status(502).json({ error: quote.error, quote: presentQuote(quote) });
       res.json({ quote: presentQuote(quote) });
     } catch (err) {
-      if (quote.status === 'capturing') {
-        quote.status = 'failed';
-        quote.error = 'The payment did not go through.';
-      }
       next(err);
     }
   });

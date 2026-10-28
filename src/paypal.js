@@ -32,6 +32,18 @@ export function createToolkitTools({ clientId, clientSecret }) {
   return tools;
 }
 
+// The capture itself, not the order: an order can be COMPLETED while its
+// capture is PENDING or DECLINED, and the order amount is not what was captured.
+function readCapture(order) {
+  const capture = order.purchase_units?.[0]?.payments?.captures?.[0];
+  return {
+    captureId: capture?.id ?? null,
+    captureStatus: capture?.status ?? null,
+    currency: capture?.amount?.currency_code ?? null,
+    value: capture?.amount?.value ?? null,
+  };
+}
+
 // `tools` maps tool name -> { execute(args) => Promise<string> }, as returned by
 // the toolkit. Tests pass a fake with the same shape.
 export function createPayPalGateway(tools) {
@@ -70,19 +82,14 @@ export function createPayPalGateway(tools) {
         currency: unit?.amount?.currency_code,
         value: unit?.amount?.value,
         payerEmail: order.payer?.email_address ?? null,
+        capture: readCapture(order),
       };
     },
 
     async captureOrder(orderId) {
       const result = await call('pay_order', { id: orderId });
       const order = result.response ?? result;
-      const capture = order.purchase_units?.[0]?.payments?.captures?.[0];
-      return {
-        status: order.status,
-        captureId: capture?.id ?? null,
-        captureStatus: capture?.status ?? null,
-        value: capture?.amount?.value ?? null,
-      };
+      return { status: order.status, ...readCapture(order) };
     },
   };
 }

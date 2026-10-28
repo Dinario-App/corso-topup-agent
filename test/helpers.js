@@ -5,9 +5,23 @@ export const testConfig = (env = {}) => loadConfig({ PUBLIC_BASE_URL: 'http://te
 
 // Fake of the gateway in src/paypal.js. Records calls so tests can assert
 // exactly when (and whether) money-moving calls happen.
-export function fakePayPal({ approvedValue, orderStatus = 'APPROVED', captureStatus = 'COMPLETED' } = {}) {
+// Options default to the happy path; override one to simulate a PayPal answer.
+// `captureError` makes captureOrder throw; `afterError` is the capture that a
+// follow-up getOrder then reports (null: PayPal shows no capture).
+export function fakePayPal({
+  approvedValue,
+  approvedCurrency = 'USD',
+  orderStatus = 'APPROVED',
+  captureStatus = 'COMPLETED',
+  captureValue,
+  captureCurrency = 'USD',
+  captureError = null,
+  afterError = null,
+  captureDelayMs = 0,
+} = {}) {
   const calls = [];
   let created = null;
+  let captured = null;
   return {
     calls,
     async createOrder(quote, urls) {
@@ -17,11 +31,22 @@ export function fakePayPal({ approvedValue, orderStatus = 'APPROVED', captureSta
     },
     async getOrder(id) {
       calls.push(['getOrder', id]);
-      return { orderId: id, status: orderStatus, currency: 'USD', value: approvedValue ?? created.value };
+      return {
+        orderId: id,
+        status: captured ? 'COMPLETED' : orderStatus,
+        currency: approvedCurrency,
+        value: approvedValue ?? created.value,
+        capture: captured ?? { captureId: null, captureStatus: null, currency: null, value: null },
+      };
     },
     async captureOrder(id) {
       calls.push(['captureOrder', id]);
-      return { status: captureStatus, captureId: 'CAP123', captureStatus: 'COMPLETED', value: created.value };
+      if (captureDelayMs) await new Promise((r) => setTimeout(r, captureDelayMs));
+      if (captureError) {
+        captured = afterError;
+        throw captureError;
+      }
+      return { status: 'COMPLETED', captureId: 'CAP123', captureStatus, currency: captureCurrency, value: captureValue ?? created.value };
     },
   };
 }

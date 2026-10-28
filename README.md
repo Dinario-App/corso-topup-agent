@@ -76,7 +76,18 @@ npm start               # http://localhost:3000
 - Payment (capture) happens only after PayPal approval **and** a separate "Pay" press, and only if PayPal's approved amount matches the quote.
 - No double capture. Quotes expire after 15 minutes. All money is handled in integer cents.
 - The PayPal toolkit is pinned to sandbox, and startup fails if it isn't.
+- A payment counts as done only when PayPal reports the **capture itself** as COMPLETED, in USD, for the quoted total. A pending capture, a different amount, or no answer from PayPal puts the top-up in "Check this payment", never "Nothing was paid".
 - Quotes are kept in memory. This is a demo, not a production service.
+
+### Known demo limits
+
+Acceptable for a sandbox demo, but they would need fixing before real use:
+
+- **The quote ID is the only credential.** Anyone with the page URL (`?quote=…`) can view, pay or cancel that quote. There are no user accounts.
+- `/paypal/return` is a state-changing GET. A third party with the quote URL could push a quote to "failed" (never to "paid").
+- An approved-but-unpaid quote (`payer_approved`) does not expire.
+- If the buyer presses Back in PayPal and the app sees the order as not approved, the quote ends as failed. Start a new top-up rather than resuming.
+- The PayPal Agent Toolkit sends no `PayPal-Request-Id`, so captures aren't idempotent. The app compensates by never retrying a capture: after an error it asks PayPal for the order's state instead.
 
 ## Notes
 
