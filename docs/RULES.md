@@ -94,7 +94,7 @@ Sources: Devpost rules (search excerpt); startupgrantsindia.
 | Uses a PayPal technology | Yes: PayPal Agent Toolkit Orders tools (`create_order`, `get_order`, `pay_order`) on the PayPal **sandbox**. |
 | Incorporates AI | Yes: Claude (Anthropic API) turns plain words into a top-up intent, asks a follow-up question when the request is unclear, and declines requests that are not top-ups. |
 | Working build | Yes: `npm install && npm start`, with steps in the README. A hosted demo URL is optional (Sly's call). |
-| Public repo with an OSS license | **Not yet.** The repo stays private and has no LICENSE file until Sly decides at submission time. |
+| Public repo with an OSS license | Yes: public since 2026-10-28, MIT (see `LICENSE`). |
 | Video under 3 minutes | Shot list in `docs/SUBMISSION.md`. Sly records it. |
 | AI disclosure | Drafted in `docs/SUBMISSION.md`. |
 | No real money or customer data | Sandbox only. The app refuses to start with any PayPal environment other than sandbox. |
