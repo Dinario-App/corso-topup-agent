@@ -47,7 +47,7 @@ const TITLES = {
 
 const NOTES = {
   drafted: 'The assistant drafted this from what you typed. Check the amount. Nothing is paid until you approve in PayPal and then press Pay.',
-  awaiting_payer: 'PayPal is waiting for your approval in the other window. Nothing has been paid yet.',
+  awaiting_payer: 'PayPal is waiting for your approval. Nothing has been paid yet.',
   payer_approved: 'You approved this in PayPal and we checked the amount with PayPal. Press Pay to finish. Nothing is paid until you do.',
   completed: 'Paid in the PayPal sandbox. No real money moved.',
   cancelled: 'Nothing was paid.',
