@@ -83,6 +83,17 @@ const WORD_NUMBERS = {
   sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100,
 };
 
+// One amount: "25", "12.50", "5,000" or "1,250.50". Commas must group
+// thousands exactly; "1,25" or "5,0000" match nothing, so the agent asks.
+const NUMBER = String.raw`(?<!\d[.,]?)(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?(?!\d)(?![.,]\d)`;
+
+const TAGGED_AMOUNT = new RegExp(String.raw`\$\s*(${NUMBER})|(${NUMBER})\s*(?:dollars?|usd|bucks)\b`, 'g');
+const BARE_AMOUNT = new RegExp(String.raw`\b${NUMBER}\b`, 'g');
+
+function toNumber(s) {
+  return Number(s.replaceAll(',', ''));
+}
+
 export function createRulesAgent() {
   return {
     kind: 'rules',
@@ -90,14 +101,14 @@ export function createRulesAgent() {
     async interpret(message) {
       const text = message.toLowerCase();
       const amounts = new Set();
-      for (const m of text.matchAll(/\$\s*(\d+(?:\.\d{1,2})?)|(\d+(?:\.\d{1,2})?)\s*(?:dollars?|usd|bucks)\b/g)) {
-        amounts.add(Number(m[1] ?? m[2]));
+      for (const m of text.matchAll(TAGGED_AMOUNT)) {
+        amounts.add(toNumber(m[1] ?? m[2]));
       }
       for (const m of text.matchAll(/\b([a-z]+)\s+(?:dollars?|bucks)\b/g)) {
         if (WORD_NUMBERS[m[1]] !== undefined) amounts.add(WORD_NUMBERS[m[1]]);
       }
       if (amounts.size === 0) {
-        const bare = [...text.matchAll(/\b(\d+(?:\.\d{1,2})?)\b/g)].map((m) => Number(m[1]));
+        const bare = [...text.matchAll(BARE_AMOUNT)].map((m) => toNumber(m[0]));
         if (bare.length === 1) amounts.add(bare[0]);
       }
       const purposeMatch = message.match(/\b(?:for|to|into)\s+(?:my\s+|the\s+)?([a-z][a-z '\-]{1,40}?)(?:\s+budget)?[.!?]*$/i);
