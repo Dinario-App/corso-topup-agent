@@ -113,8 +113,8 @@ Backup takes worth recording: a cancel in PayPal (shows "Nothing was paid"), and
 | 2 | **PayPal sandbox buyer test account** | To approve payments in the demo | Created automatically under Sandbox → Accounts (a "Personal" account). Only needed in the video and judge instructions. |
 | 3 | **Anthropic API key** | To run the AI agent (otherwise the rules parser is used) | Set `ANTHROPIC_API_KEY` in `.env`. A request costs a fraction of a cent at `effort: low`. |
 | 4 | **Verify the rules** on the official Devpost page | The build session couldn't open devpost.com | Checklist in `docs/RULES.md` §9. Especially: deadline time, organization entry, IP and license-grant terms. |
-| 5 | **Choose an open-source license** and add `LICENSE` | Required for submission | Recommended: MIT (simple, permissive). Add it only when making the repo public. |
-| 6 | **Make the repo public** | Required for submission | Sly's decision at submission time. Before flipping, check the git history contains no secrets (it shouldn't: `.env` is ignored). |
+| 5 | ~~**Choose an open-source license** and add `LICENSE`~~ | Required for submission | **Done:** MIT, see `LICENSE` (2026-10-28). |
+| 6 | ~~**Make the repo public**~~ | Required for submission | **Done:** the repo is public (since 2026-10-28). |
 | 7 | **Hosting decision** | Judges must be able to run or try it | Either rely on the README run steps, or host a demo (Render has a free tier and is a hackathon sponsor) with the sandbox credentials as environment variables. Set `PUBLIC_BASE_URL` to the hosted URL. |
 | 8 | **Record and upload the demo video** | Required | Shot list above. Public YouTube upload, under 3:00. |
 | 9 | **Final project name and branding** | Story and video | "Top-up Agent" is a working title. Whether to mention Corso or Dinario is Sly's call. |

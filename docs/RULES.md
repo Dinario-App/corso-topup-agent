@@ -83,7 +83,7 @@ Sources: third-party summaries citing the official rules. See `docs/SUBMISSION.m
 - The submission must be the entrant's own original work, and must not infringe anyone's IP, contract, privacy or other rights.
 - Third-party SDKs, APIs and open-source components are allowed if used under their own licenses and terms. That covers the PayPal Agent Toolkit, the Anthropic SDK and Express.
 - **Not verified:** the full "Submission ownership / license grant" section, which covers any rights granted to PayPal or Devpost, such as using the entry, its name or the video for promotion. **Sly must read this part of the official rules before submitting.**
-- Because the repo becomes public under an open-source license, everything in it becomes public. That is why this is a separate small project with no Corso production code.
+- Because the repo is public under an open-source license, everything in it is public. That is why this is a separate small project with no Corso production code.
 
 Sources: Devpost rules (search excerpt); startupgrantsindia.
 
@@ -94,7 +94,7 @@ Sources: Devpost rules (search excerpt); startupgrantsindia.
 | Uses a PayPal technology | Yes: PayPal Agent Toolkit Orders tools (`create_order`, `get_order`, `pay_order`) on the PayPal **sandbox**. |
 | Incorporates AI | Yes: Claude (Anthropic API) turns plain words into a top-up intent, asks a follow-up question when the request is unclear, and declines requests that are not top-ups. |
 | Working build | Yes: `npm install && npm start`, with steps in the README. A hosted demo URL is optional (Sly's call). |
-| Public repo with an OSS license | **Not yet.** The repo stays private and has no LICENSE file until Sly decides at submission time. |
+| Public repo with an OSS license | Yes: public since 2026-10-28, MIT (see `LICENSE`). |
 | Video under 3 minutes | Shot list in `docs/SUBMISSION.md`. Sly records it. |
 | AI disclosure | Drafted in `docs/SUBMISSION.md`. |
 | No real money or customer data | Sandbox only. The app refuses to start with any PayPal environment other than sandbox. |
