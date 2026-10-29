@@ -5,3 +5,7 @@ node_modules/
 *.log
 coverage/
 .DS_Store
+
+# Any env-style secrets file, e.g. .buyer.env (sandbox buyer login). Keep out of git.
+*.env
+!.env.example
