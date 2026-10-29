@@ -73,6 +73,20 @@ test('rules agent asks instead of guessing at malformed amounts', async () => {
   }
 });
 
+test('a malformed amount next to a valid one still makes the agent ask', async () => {
+  const agent = createRulesAgent();
+  for (const message of [
+    'top up $25 or $1,25', 'top up $1,25 or $25',
+    'top up $25 or $5,0000', 'top up $5,0000 or $25',
+    'top up $25 or $1.505', 'top up $1.505 or $25',
+    'add 25 dollars or 1,25 dollars', 'top up 25 or 1,25', 'top up 1,25 or 25',
+  ]) {
+    const intent = await agent.interpret(message);
+    assert.equal(intent.action, 'clarify', message);
+    assert.equal(intent.amount_usd, null, message);
+  }
+});
+
 test('rules agent asks when the amount is missing or ambiguous', async () => {
   const agent = createRulesAgent();
   assert.equal((await agent.interpret('top up my trip budget')).action, 'clarify');
