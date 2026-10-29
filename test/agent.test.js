@@ -62,6 +62,9 @@ test('rules agent reads thousands separators as one amount', async () => {
   assert.equal((await agent.interpret('Put $1,250.50 toward the gym')).amount_usd, 1250.5);
   assert.equal((await agent.interpret('top up $25, thanks')).amount_usd, 25);
   assert.equal((await agent.interpret('top up $25.')).amount_usd, 25);
+  assert.equal((await agent.interpret('top up $5,000.')).amount_usd, 5000);
+  assert.equal((await agent.interpret('Add $12.50, please')).amount_usd, 12.5);
+  assert.equal((await agent.interpret('top up 40, thanks')).amount_usd, 40);
 });
 
 test('rules agent asks instead of guessing at malformed amounts', async () => {
@@ -80,6 +83,18 @@ test('a malformed amount next to a valid one still makes the agent ask', async (
     'top up $25 or $5,0000', 'top up $5,0000 or $25',
     'top up $25 or $1.505', 'top up $1.505 or $25',
     'add 25 dollars or 1,25 dollars', 'top up 25 or 1,25', 'top up 1,25 or 25',
+  ]) {
+    const intent = await agent.interpret(message);
+    assert.equal(intent.action, 'clarify', message);
+    assert.equal(intent.amount_usd, null, message);
+  }
+});
+
+test('the agent never reads part of a malformed amount', async () => {
+  const agent = createRulesAgent();
+  for (const message of [
+    'top up $25.50.50', '25.50.50 dollars', 'top up $25.50,50', 'top up 25.50.50',
+    'top up $1,250.505', 'top up $1,2500', 'top up $5,000,00',
   ]) {
     const intent = await agent.interpret(message);
     assert.equal(intent.action, 'clarify', message);

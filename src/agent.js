@@ -83,17 +83,20 @@ const WORD_NUMBERS = {
   sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100,
 };
 
-// Anything that looks like a number is matched loosely, then checked: a
-// valid amount is "25", "12.50", "5,000" or "1,250.50". A malformed one
-// ("1,25", "5,0000", "25.505") still counts as an amount the person typed,
-// so the agent asks instead of quietly using the other one.
-const NUMBER_LIKE = String.raw`\d(?:[\d,]*\d)?(?:\.\d+)?`;
+// Every number-looking token is captured whole (digits, dots and commas,
+// never starting inside another number), trailing sentence punctuation is
+// dropped, then the token is checked: a valid amount is "25", "12.50",
+// "5,000" or "1,250.50". A malformed one ("1,25", "5,0000", "25.505",
+// "25.50.50") still counts as an amount the person typed, so the agent asks
+// instead of using part of it or quietly using another one.
+const NUMBER_LIKE = String.raw`(?<!\d[.,]*)\d[\d.,]*`;
 const VALID_NUMBER = /^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?$/;
 const TAGGED_AMOUNT = new RegExp(String.raw`\$\s*(${NUMBER_LIKE})|(${NUMBER_LIKE})\s*(?:dollars?|usd|bucks)\b`, 'g');
-const BARE_AMOUNT = new RegExp(String.raw`\b${NUMBER_LIKE}\b`, 'g');
+const BARE_AMOUNT = new RegExp(String.raw`(?<![a-z])${NUMBER_LIKE}(?![a-z])`, 'g');
 
-// Returns the number, or null when the text is not a well-formed amount.
-function toNumber(s) {
+// Returns the number, or null when the token is not a well-formed amount.
+function toNumber(token) {
+  const s = token.replace(/[.,]+$/, '');
   return VALID_NUMBER.test(s) ? Number(s.replaceAll(',', '')) : null;
 }
 
