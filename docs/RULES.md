@@ -83,7 +83,7 @@ Sources: third-party summaries citing the official rules. See `docs/SUBMISSION.m
 - The submission must be the entrant's own original work, and must not infringe anyone's IP, contract, privacy or other rights.
 - Third-party SDKs, APIs and open-source components are allowed if used under their own licenses and terms. That covers the PayPal Agent Toolkit, the Anthropic SDK and Express.
 - **Not verified:** the full "Submission ownership / license grant" section, which covers any rights granted to PayPal or Devpost, such as using the entry, its name or the video for promotion. **Sly must read this part of the official rules before submitting.**
-- Because the repo becomes public under an open-source license, everything in it becomes public. That is why this is a separate small project with no Corso production code.
+- Because the repo is public under an open-source license, everything in it is public. That is why this is a separate small project with no Corso production code.
 
 Sources: Devpost rules (search excerpt); startupgrantsindia.
 
