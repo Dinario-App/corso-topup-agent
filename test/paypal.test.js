@@ -1,8 +1,14 @@
 import test from 'node:test';
+import { PayPalAgentToolkit } from '@paypal/agent-toolkit/ai-sdk';
+import { createRequire } from 'node:module';
+
 import assert from 'node:assert/strict';
 import { createPayPalGateway, createToolkitTools, PayPalError } from '../src/paypal.js';
 import { buildQuote } from '../src/quote.js';
 import { testConfig } from './helpers.js';
+
+// The toolkit uses the CommonJS Axios entry point.
+const axios = createRequire(import.meta.url)('axios');
 
 function fakeTools(results) {
   const calls = [];
@@ -99,4 +105,54 @@ test('refuses a toolkit that points at live PayPal', () => {
     getTools() { throw new Error('should not get this far'); }
   }
   assert.throws(() => createToolkitTools({ clientId: 'x', clientSecret: 'y' }, LiveToolkit), /not in sandbox mode/);
+});
+
+test('installed toolkit sandbox base URL matches the exact allowlist', () => {
+  const toolkit = new PayPalAgentToolkit({
+    clientId: 'placeholder', clientSecret: 'placeholder',
+    configuration: { actions: { orders: { create: true, get: true, capture: true } }, context: { sandbox: true } },
+  });
+  assert.equal(toolkit.client.getBaseUrl(), 'https://api.sandbox.paypal.com');
+});
+
+for (const baseUrl of [
+  'https://api-m.paypal.com/?x=sandbox.paypal.com',
+  'https://sandbox.paypal.com.evil.tld',
+  'not a URL',
+  'https://api.sandbox.paypal.com.evil.tld',
+  'https://api.sandbox.paypal.com@evil.tld',
+]) {
+  test(`refuses sandbox guard bypass: ${baseUrl}`, () => {
+    let toolsRequested = false;
+    class UnsafeToolkit {
+      client = { getBaseUrl: () => baseUrl };
+      getTools() { toolsRequested = true; return {}; }
+    }
+    assert.throws(() => createToolkitTools({ clientId: 'x', clientSecret: 'y' }, UnsafeToolkit), /not in sandbox mode/);
+    assert.equal(toolsRequested, false);
+  });
+}
+
+test('updated dependencies build an order through the real toolkit with mocked HTTP', async (t) => {
+  const requests = [];
+  const originalAdapter = axios.defaults.adapter;
+  t.after(() => { axios.defaults.adapter = originalAdapter; });
+  axios.defaults.adapter = async (config) => {
+    requests.push(config);
+    assert.equal(new URL(config.url).hostname, 'api.sandbox.paypal.com');
+    const data = config.url.endsWith('/v1/oauth2/token')
+      ? { access_token: 'test-only-token' }
+      : { id: 'ORDER1', status: 'PAYER_ACTION_REQUIRED', links: [{ rel: 'approve', href: 'https://www.sandbox.paypal.com/checkoutnow?token=ORDER1' }] };
+    return { data, status: 200, statusText: 'OK', headers: {}, config };
+  };
+  const tools = createToolkitTools({ clientId: 'placeholder', clientSecret: 'placeholder' });
+  const { quote } = buildQuote({ action: 'topup', amount_usd: 25, purpose: 'Trip budget', reply: '' }, testConfig({ TOPUP_SERVICE_FEE_FLAT_USD: '0.50' }), 0);
+  const order = await createPayPalGateway(tools).createOrder(quote, { returnUrl: 'https://example.com/return', cancelUrl: 'https://example.com/cancel' });
+  assert.equal(order.orderId, 'ORDER1');
+  assert.equal(requests.length, 2);
+  const request = requests[1];
+  assert.equal(request.url, 'https://api.sandbox.paypal.com/v2/checkout/orders');
+  const body = JSON.parse(request.data);
+  assert.equal(body.purchase_units[0].amount.value, '25.5');
+  assert.equal(body.purchase_units[0].amount.breakdown.item_total.value, '25.5');
 });

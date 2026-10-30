@@ -1,6 +1,9 @@
 import { PayPalAgentToolkit } from '@paypal/agent-toolkit/ai-sdk';
 import { centsToDollars } from './money.js';
 
+// @paypal/agent-toolkit 1.11.0 client.getBaseUrl() returns this host in sandbox.
+const SANDBOX_HOSTS = new Set(['api.sandbox.paypal.com']);
+
 // Thin wrapper over the PayPal Agent Toolkit's order tools, always in sandbox
 // mode. Only server code calls these, and only after the person has approved;
 // the language model is never handed them.
@@ -23,8 +26,15 @@ export function createToolkitTools({ clientId, clientSecret }, Toolkit = PayPalA
     },
   });
   // Belt and braces: refuse to run if the toolkit is not pointed at the sandbox.
-  if (!/sandbox\.paypal\.com/.test(toolkit.client.getBaseUrl())) {
-    throw new Error(`PayPal toolkit is not in sandbox mode (${toolkit.client.getBaseUrl()}).`);
+  const baseUrl = toolkit.client.getBaseUrl();
+  let host;
+  try {
+    host = new URL(baseUrl).hostname;
+  } catch {
+    host = null;
+  }
+  if (!host || !SANDBOX_HOSTS.has(host)) {
+    throw new Error(`PayPal toolkit is not in sandbox mode (${baseUrl}).`);
   }
   const tools = toolkit.getTools();
   for (const name of ['create_order', 'get_order', 'pay_order']) {
