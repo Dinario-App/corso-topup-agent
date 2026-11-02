@@ -1,6 +1,6 @@
 # Top-up Agent
 
-PayPal AI Hackathon entry. Say how much you want to add, in plain words ("top up $25 for my trip budget"). An AI agent drafts the top-up and shows the cost in dollars. You approve it in PayPal, then press Pay. Nothing is paid without your approval.
+PayPal AI Hackathon entry. Say how much you want to add, in plain words ("top up $25 for my trip budget"). With an Anthropic key set, a Claude agent drafts the top-up; without one, a simple rules parser does, and the page says which. Either way you see the cost in dollars, approve it in PayPal, then press Pay. Nothing is paid without your approval.
 
 **PayPal sandbox only.** No live keys, no real money, no real customer data. This is a standalone demo project, separate from Corso's production code.
 
